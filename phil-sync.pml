@@ -40,7 +40,6 @@ proctype fork(byte id)
     byte x;
 starting:
     com[id] ? req, x;
-    printf("process %d has been granted\n", x);
     com[id] ? release, x;
     goto starting;
 }
