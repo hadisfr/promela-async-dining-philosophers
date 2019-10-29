@@ -1,65 +1,95 @@
 #define N 3
 
-byte count_eating;
-chan com[N] = [0] of { mtype, byte };
-mtype { req, release, grant };
+byte count_eating
+chan req[N] = [1] of { mtype:philosopher, byte }
+chan res[N] = [1] of { mtype:chopstick, byte }
+mtype:philosopher = { request, release }
+mtype:chopstick = { grant, forbid }
 
 init {
     atomic {
-        byte i = 0;
+        byte i = 0
         do
         :: (i < N - 1) ->
-            run philosopher(i);
-            run fork(i);
-            i++;
+            run philosopher(i)
+            run chopstick(i)
+            i++
         :: else ->
-            run reset_philosopher(i);
-            run fork(i);
-            break;
-        od;
+            run altruist_philosopher(i)
+            run chopstick(i)
+            break
+        od
     }
 }
 
 proctype philosopher(byte id) {
+    byte next_id = (id + 1) % N
 thinking:
-    com[id] ! req, id;
-choosing:
-    atomic {
-        com[(id + 1) % N] ! req, id ->
-            count_eating++;
-    };
-eating:
-    count_eating--;
-    com[(id + 1) % N] ! release, id;
-    com[id] ! release, id;
-    goto thinking;
-}
-
-proctype fork(byte id)
-{
-    byte x;
-starting:
-    com[id] ? req, x;
-    com[id] ? release, x;
-    goto starting;
-}
-
-proctype reset_philosopher(byte id) {
-thinking:
-    com[id] ! req, id;
-choosing:
+    req[id] ! request, id
     if
-    :: atomic {
-        com[(id + 1) % N] ! req, id ->
-            count_eating++;
-    };
-    :: else->
-        com[id] ! release, id;
-        goto thinking;
-    fi;
+        :: res[id] ? grant, id
+        :: res[id] ? forbid, id ->
+            goto thinking
+    fi
+choosing:
+    req[next_id] ! request, id
+    if
+        :: atomic {
+            res[id] ? grant, next_id ->
+                count_eating++
+        }
+        :: res[id] ? forbid, next_id ->
+            goto choosing
+    fi
 eating:
-    count_eating--;
-    com[(id + 1) % N] ! release, id;
-    com[id] ! release, id;
-    goto thinking;
+    atomic {
+        count_eating--
+        req[next_id] ! release, id
+    }
+    req[id] ! release, id
+    goto thinking
+}
+
+proctype chopstick(byte id)
+{
+    byte master_id, requester_id
+starting:
+    req[id] ? request, master_id
+    res[master_id] ! grant, id
+    do
+        :: req[id] ? release, master_id ->
+            break
+        :: req[id] ? request, requester_id ->
+            res[requester_id] ! forbid, id
+    od
+    goto starting
+}
+
+proctype altruist_philosopher(byte id) {
+    byte next_id = (id + 1) % N
+thinking:
+    req[id] ! request, id
+    if
+        :: res[id] ? grant, id
+        :: res[id] ? forbid, id ->
+            goto thinking
+    fi
+choosing:
+    req[next_id] ! request, id
+    if
+        :: atomic {
+            res[id] ? grant, next_id ->
+                count_eating++
+        }
+        :: res[id] ? forbid, next_id ->
+            req[id] ! release, id
+            goto thinking
+    fi
+eating:
+    atomic {
+        count_eating--
+        req[next_id] ! release, id
+    }
+    req[id] ! release, id
+    goto thinking
 }
