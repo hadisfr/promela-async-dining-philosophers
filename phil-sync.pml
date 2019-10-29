@@ -24,7 +24,10 @@ proctype philosopher(byte id) {
 thinking:
     com[id] ! req, id;
 choosing:
-    com[(id + 1) % N] ! req, id;
+    atomic {
+        com[(id + 1) % N] ! req, id ->
+            count_eating++;
+    };
 eating:
     count_eating--;
     com[(id + 1) % N] ! release, id;
