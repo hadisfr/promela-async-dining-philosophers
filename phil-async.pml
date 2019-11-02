@@ -1,8 +1,8 @@
 #define N 3
 
 byte count_eating
-chan req[N] = [1] of { mtype:philosopher, byte }
-chan res[N] = [1] of { mtype:chopstick, byte }
+chan req[N] = [N - 1] of { mtype:philosopher, byte }
+chan res[N] = [N - 1] of { mtype:chopstick, byte }
 mtype:philosopher = { request, release }
 mtype:chopstick = { grant, forbid }
 
@@ -24,21 +24,38 @@ init {
 
 proctype philosopher(byte id) {
     byte next_id = (id + 1) % N
+    byte sender_id
 thinking:
     req[id] ! request, id
     if
-        :: res[id] ? grant, id
-        :: res[id] ? forbid, id ->
-            goto thinking
+        :: res[id] ? grant, sender_id ->
+            if
+                :: sender_id == id ->
+                    goto choosing
+                :: else ->
+                    goto thinking
+            fi
+        :: res[id] ? forbid, sender_id ->
+            if
+                :: sender_id == id ->
+                    goto thinking
+                :: else ->
+                    goto thinking
+            fi
     fi
 choosing:
     req[next_id] ! request, id
     if
-        :: atomic {
-            res[id] ? grant, next_id ->
-                count_eating++
-        }
-        :: res[id] ? forbid, next_id ->
+        :: res[id] ? grant, sender_id ->
+            if
+                :: atomic { sender_id == next_id ->
+                    count_eating++
+                }
+                :: else ->
+                    req[sender_id] ! release, id
+                    goto choosing
+            fi
+        :: res[id] ? forbid, sender_id ->
             goto choosing
     fi
 eating:
@@ -67,21 +84,39 @@ starting:
 
 proctype altruist_philosopher(byte id) {
     byte next_id = (id + 1) % N
+    byte sender_id
 thinking:
     req[id] ! request, id
     if
-        :: res[id] ? grant, id
-        :: res[id] ? forbid, id ->
-            goto thinking
+        :: res[id] ? grant, sender_id ->
+            if
+                :: sender_id == id ->
+                    goto choosing
+                :: else ->
+                    goto thinking
+            fi
+        :: res[id] ? forbid, sender_id ->
+            if
+                :: sender_id == id ->
+                    goto thinking
+                :: else ->
+                    goto thinking
+            fi
     fi
 choosing:
     req[next_id] ! request, id
     if
-        :: atomic {
-            res[id] ? grant, next_id ->
-                count_eating++
-        }
-        :: res[id] ? forbid, next_id ->
+        :: res[id] ? grant, sender_id ->
+            if
+                :: atomic { sender_id == next_id ->
+                    count_eating++
+                }
+                :: else ->
+                    req[sender_id] ! release, id
+                    req[id] ! release, id
+                    goto thinking
+            fi
+        :: res[id] ? forbid, sender_id ->
             req[id] ! release, id
             goto thinking
     fi
